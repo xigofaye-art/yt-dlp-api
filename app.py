@@ -4,7 +4,7 @@ import os
 
 app = Flask(__name__)
 
-COOKIES_FILE = '/app/cookies.txt'
+COOKIES_FILE = '/app/www.youtube.com_cookies.txt'
 
 @app.route('/download', methods=['GET'])
 def download():
