@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, request
 import yt_dlp
 import os
+import traceback
 
 app = Flask(__name__)
 
@@ -10,30 +11,33 @@ def download():
     if not video_id:
         return jsonify({'error': 'Missing id parameter'}), 400
 
-    url = f'https://www.youtube.com/watch?v={video_id}'
+    url = f'https://www.youtube.com/shorts/{video_id}'
 
-    for client in ['ios', 'tv_embedded', 'web_creator']:
-        ydl_opts = {
-            'format': 'best[ext=mp4][height<=1080]/best[ext=mp4]/best',
-            'quiet': True,
-            'no_warnings': True,
-            'skip_download': True,
-            'extractor_args': {
-                'youtube': {
-                    'player_client': [client],
-                }
-            },
-        }
+    clients = ['ios', 'android_vr', 'tv_embedded']
+
+    for client in clients:
         try:
+            ydl_opts = {
+                'format': 'best[ext=mp4]/best',
+                'quiet': True,
+                'no_warnings': True,
+                'skip_download': True,
+                'extractor_args': {
+                    'youtube': {
+                        'player_client': [client],
+                    }
+                },
+            }
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=False)
-                video_url = info.get('url')
+                formats = info.get('formats', [])
+                video_url = None
+                for f in sorted(formats, key=lambda x: x.get('height') or 0, reverse=True):
+                    if f.get('ext') == 'mp4' and f.get('url') and f.get('height'):
+                        video_url = f['url']
+                        break
                 if not video_url:
-                    formats = info.get('formats', [])
-                    for f in formats:
-                        if f.get('ext') == 'mp4' and f.get('url'):
-                            video_url = f['url']
-                            break
+                    video_url = info.get('url')
                 if video_url:
                     return jsonify({
                         'url': video_url,
@@ -44,17 +48,16 @@ def download():
         except Exception:
             continue
 
-    return jsonify({'error': 'All clients failed to extract video URL'}), 500
+    return jsonify({'error': 'Could not extract video URL from any client'}), 500
 
 @app.route('/health', methods=['GET'])
 def health():
     return jsonify({'status': 'ok'})
 
+@app.errorhandler(Exception)
+def handle_exception(e):
+    return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
-```
-
-保存后等 Zeabur 自动重新部署（约 2 分钟），再测试：
-```
-https://faye0430.zeabur.app/download?id=EIIPbN4ZVG8
+    app.run(host='0.0.0.0', port=port, debug=False)
